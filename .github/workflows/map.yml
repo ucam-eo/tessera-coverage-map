@@ -1,0 +1,40 @@
+# .github/workflows/update_map.yml
+name: Update Map Every 12 Hours
+
+on:
+  workflow_dispatch: # Allow manual trigger
+  schedule:
+    # Cron syntax, '0 * * * *' means run at the 0th minute of every hour
+    # https://crontab.guru/every-hour
+    - cron: '0 */12 * * *'
+
+jobs:
+  build-and-commit:
+    runs-on: ubuntu-latest # Use the latest Ubuntu virtual machine environment
+
+    permissions:
+      contents: write
+
+    steps:
+      # Step 1: Check out your repository code
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      # Step 2: Set up uv environment
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      # Step 3: Run your Python script to generate the map
+      - name: Generate map
+        run: uvx geotessera coverage --output map.png
+
+      # Step 4: Commit the updated map file
+      # We use an existing action to simplify the commit operation
+      - name: Commit and push if it changed
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: 'CI: Auto-update map.png' # Commit message
+          file_pattern: 'map.png' # Monitor changes to map.png file only
+          commit_user_name: 'GitHub Actions Bot' # Committer name
+          commit_user_email: 'actions@github.com' # Committer email
+          commit_author: 'GitHub Actions Bot <actions@github.com>'
