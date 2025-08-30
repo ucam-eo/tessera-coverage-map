@@ -19,13 +19,11 @@ jobs:
         run: brew install timg vhs
       - name: Run tape
         run: vhs vhs.tape
-      - uses: stefanzweifel/git-auto-commit-action@v4
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Commit and push if changed
+        uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: Update generated VHS GIF
-          branch: main
-          commit_user_name: vhs-action 📼
-          commit_user_email: actions@github.com
-          commit_author: vhs-action 📼 <actions@github.com>
-          file_pattern: '*.gif'
+          commit_message: 'CI: Auto-update geotessera.gif'
+          file_pattern: 'geotessera.gif'
+          commit_user_name: 'GitHub Actions Bot' # Committer name
+          commit_user_email: 'actions@github.com' # Committer email
+          commit_author: 'GitHub Actions Bot <actions@github.com>'
