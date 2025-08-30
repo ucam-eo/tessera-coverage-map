@@ -11,6 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@main
       - name: Install uv
         uses: astral-sh/setup-uv@v5
       - name: Install tiv
