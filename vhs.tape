@@ -60,6 +60,8 @@ Output geotessera.gif
 Require uvx
 
 Set Shell "bash"
+Set Padding 1
+Set Margin 0
 Set CursorBlink false
 Set FontSize 14
 Set Width 1000
@@ -73,10 +75,11 @@ Type "cat demo/01"
 Set TypingSpeed 1s
 Enter
 
-Sleep 30
+Sleep 20s
 
 Set TypingSpeed 1s
 Type "uvx geotessera --help"
+Sleep 10s
 Enter
 
 Sleep 40s
@@ -93,11 +96,13 @@ Enter
 
 Wait@500s
 
+Sleep 20s
+
 Enter
 Set TypingSpeed 0.2s
 Type "timg -p q tessera_coverage.png"
 Set TypingSpeed 1s
-Sleep 2s
+Sleep 10s
 Enter
 
 Sleep 30s
