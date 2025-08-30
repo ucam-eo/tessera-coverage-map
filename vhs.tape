@@ -91,11 +91,11 @@ Enter
 Type "uvx geotessera coverage"
 Enter
 
-Wait@60s
+Wait@500s
 
 Enter
 Set TypingSpeed 0.2s
-Type "tiv tessera_coverage.png"
+Type "timg tessera_coverage.png"
 Set TypingSpeed 1s
 Sleep 2s
 Enter
@@ -112,12 +112,12 @@ Enter
 Type "uvx geotessera coverage --country=uk
 Enter
 
-Wait@60s
+Wait@300s
 
 Sleep 15s
 
 Enter
-Type "tiv tessera_coverage.png"
+Type "timg tessera_coverage.png"
 Sleep 5s
 Enter
 
@@ -130,37 +130,4 @@ Type "cat demo/04"
 Set TypingSpeed 1s
 Enter
 
-Sleep 20s
-Type "uvx geotessera download --region-file=example/CB.geojson --output cb"
-Enter
-
-Wait@300s
-
-Sleep 30s
-Type "ls -la cb"
-Sleep 10s
-Enter
-Sleep 30s
-
-Ctrl+L
-Sleep 5s
-Set TypingSpeed 0.2s
-Type "cat demo/05"
-Set TypingSpeed 1s
-Enter
-
-Type "uvx geotessera visualize cb cb.tiff"
-Enter
-
-Wait @300s
-Sleep 15s
-
-Enter
-Type "tiv cb.tiff"
-Sleep 5s
-Enter
-
-Type echo "Run it for yourself and look at the high resolution version in a web browser!  Once you're done, go to https://github.com/ucam-eo/tessera-interactive-map for an interactive Jupyter notebook to try labelled classifications."
-Enter
-
-Sleep 60s
+Sleep 50s

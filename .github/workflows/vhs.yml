@@ -15,8 +15,8 @@ jobs:
         uses: Homebrew/actions/setup-homebrew@main
       - name: Install uv
         uses: astral-sh/setup-uv@v5
-      - name: Install tiv and vhs
-        run: brew install tiv vhs
+      - name: Install timg and vhs
+        run: brew install timg vhs
       - name: Run tape
         run: vhs vhs.tape
       - uses: stefanzweifel/git-auto-commit-action@v4
