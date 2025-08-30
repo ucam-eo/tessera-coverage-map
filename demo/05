@@ -1,0 +1,4 @@
+
+Run a PCA clustering on the 128 dimensions to group them into 3 RGB bands to
+visualise them.
+

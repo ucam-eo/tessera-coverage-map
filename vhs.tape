@@ -127,7 +127,7 @@ Set TypingSpeed 1s
 Enter
 
 Sleep 20s
-Type "uvx geotessera download --region-file=example/CB.geojson --output cb"
+Type "uvx geotessera download --region-file=https://raw.githubusercontent.com/ucam-eo/geotessera/refs/heads/main/example/CB.geojson --output cb"
 Enter
 
 Wait@300s

@@ -1,5 +1,4 @@
 
 Once you have a region of interest, download them as GeoTIFF chunks locally to
-your computer. Each GeoTIFF has 128 bands representing each of the vectors from
-the embedding.
+your computer. Each GeoTIFF has 128 bands representing the embedding vectors.
 
