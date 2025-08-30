@@ -1,13 +1,6 @@
 
-
-Welcome to Geotessera!  This is a CLI interface to the Tessera foundation
-model, which gives access to geospatial embeddings that have processed
-Sentinel-1 and Sentinel-2 satellite imagery to generate 128-channel
-representation maps at 10m resolution.
-
-These embeddings compress a full year of temporal-spectral features into dense
-representations optimized for downstream geospatial analysis tasks.
-
-Here's how to take it for a spin using the Geotessera CLI...
+Welcome to Geotessera, a CLI to the Tessera geofoundation model that
+provides embeddings of annual temporal-spectral observations
+from Sentinel 1/2.
 
 
