@@ -73,7 +73,7 @@ Type "cat demo/01"
 Set TypingSpeed 1s
 Enter
 
-Sleep 20s
+Sleep 30
 
 Set TypingSpeed 1s
 Type "uvx geotessera --help"
@@ -114,14 +114,14 @@ Enter
 
 Wait@300s
 
-Sleep 15s
+Sleep 20s
 
 Enter
 Type "timg tessera_coverage.png"
-Sleep 5s
+Sleep 10s
 Enter
 
-Sleep 30s
+Sleep 40s
 
 Ctrl+L
 Sleep 5s
