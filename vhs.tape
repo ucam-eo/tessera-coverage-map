@@ -79,7 +79,7 @@ Set TypingSpeed 1s
 Type "uvx geotessera --help"
 Enter
 
-Sleep 30s
+Sleep 40s
 
 Ctrl+L
 Sleep 5s
