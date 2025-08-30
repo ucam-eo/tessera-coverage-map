@@ -62,8 +62,8 @@ Require uvx
 Set Shell "bash"
 Set CursorBlink false
 Set FontSize 14
-Set Width 1200
-Set Height 800
+Set Width 1000
+Set Height 600
 Set PlaybackSpeed 8.0 
 
 Ctrl+L
@@ -95,7 +95,7 @@ Wait@500s
 
 Enter
 Set TypingSpeed 0.2s
-Type "timg tessera_coverage.png"
+Type "timg -p q tessera_coverage.png"
 Set TypingSpeed 1s
 Sleep 2s
 Enter
@@ -117,7 +117,7 @@ Wait@300s
 Sleep 20s
 
 Enter
-Type "timg tessera_coverage.png"
+Type "timg -p q tessera_coverage.png"
 Sleep 10s
 Enter
 
