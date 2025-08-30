@@ -160,6 +160,7 @@ Type "tiv cb.tiff"
 Sleep 5s
 Enter
 
-Type Run it for yourself and look at the high resolution version in a web browser!  Once you're done, go to https://github.com/ucam-eo/tessera-interactive-map for an interactive Jupyter notebook to try labelled classifications.
+Type echo "Run it for yourself and look at the high resolution version in a web browser!  Once you're done, go to https://github.com/ucam-eo/tessera-interactive-map for an interactive Jupyter notebook to try labelled classifications."
+Enter
 
 Sleep 60s
