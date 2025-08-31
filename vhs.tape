@@ -60,12 +60,12 @@ Output geotessera.gif
 Require uvx
 
 Set Shell "bash"
-Set Padding 1
-Set Margin 0
+Set Padding 3
+Set Margin 3
 Set CursorBlink false
-Set FontSize 14
-Set Width 1000
-Set Height 600
+Set FontSize 12
+Set Width 800 
+Set Height 500
 Set PlaybackSpeed 8.0 
 
 Ctrl+L
@@ -100,7 +100,7 @@ Sleep 20s
 
 Enter
 Set TypingSpeed 0.2s
-Type "timg -p q tessera_coverage.png"
+Type "timg -p q tessera_coverage.png   # blurry because of terminal"
 Set TypingSpeed 1s
 Sleep 10s
 Enter
@@ -152,11 +152,12 @@ Wait @300s
 Sleep 15s
 
 Enter
-Type "timg -p q cb.tiff"
+Type "timg -p q cb.tiff  # blurry because of terminal"
 Sleep 5s
 Enter
 
+Set TypingSpeed 0.4s
 Type echo "Run it for yourself and look at the high resolution version in a web browser!  Once you're done, go to https://github.com/ucam-eo/tessera-interactive-map for an interactive Jupyter notebook to try labelled classifications."
 Enter
 
-Sleep 60s
+Sleep 120s

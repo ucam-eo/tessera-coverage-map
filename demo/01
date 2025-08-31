@@ -1,6 +1,5 @@
 
-Welcome to Geotessera, a CLI to the Tessera geofoundation model that
-provides embeddings of annual temporal-spectral observations
-from Sentinel 1/2.
+Geotessera is the CLI to the Tessera geofoundation model that
+provides embeddings of annual temporal-spectral observations.
 
 
