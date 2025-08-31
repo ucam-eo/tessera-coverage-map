@@ -127,7 +127,7 @@ Set TypingSpeed 1s
 Enter
 
 Sleep 20s
-Type "uvx geotessera download --bbox "-0.809469,51.635413,-0.747113,51.658581" --output cb"
+Type "uvx geotessera download --bbox '-0.809469,51.635413,-0.747113,51.658581' --output cb"
 Enter
 
 Wait@300s
