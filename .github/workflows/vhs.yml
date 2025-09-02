@@ -2,7 +2,7 @@ name: vhs
 on:
   workflow_dispatch: # Allow manual trigger
   schedule:
-    - cron: '0 0 * * *'
+    - cron: '0 4 * * *'
   push:
     paths:
       - vhs.tape
