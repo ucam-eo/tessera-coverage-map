@@ -94,7 +94,7 @@ Enter
 Type "uvx geotessera coverage"
 Enter
 
-Wait@500s
+Wait@1000s
 
 Sleep 20s
 
