@@ -26,15 +26,17 @@ jobs:
 
       # Step 3: Run your Python script to generate the map
       - name: Generate map
-        run: uvx geotessera coverage --output map.png
+        run: uvx geotessera coverage
 
-      # Step 4: Commit the updated map file
+      - name: Make HTML
+        run: mv globe.html index.html
+
+      # Step 5: Commit the updated map file
       # We use an existing action to simplify the commit operation
       - name: Commit and push if it changed
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: 'CI: Auto-update map.png' # Commit message
-          file_pattern: 'map.png' # Monitor changes to map.png file only
+          commit_message: 'CI: Auto-update map' # Commit message
           commit_user_name: 'GitHub Actions Bot' # Committer name
           commit_user_email: 'actions@github.com' # Committer email
           commit_author: 'GitHub Actions Bot <actions@github.com>'

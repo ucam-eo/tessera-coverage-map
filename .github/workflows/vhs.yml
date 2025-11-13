@@ -18,7 +18,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
       - name: Install timg and vhs
-        run: brew install timg vhs
+        run: brew install timg vhs gdal
       - name: Run tape
         run: vhs vhs.tape
       - name: Commit and push if changed
