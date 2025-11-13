@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GeoTessera Globe Visualization</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+        #globeViz {
+            width: 100vw;
+            height: 100vh;
+        }
+        .controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            z-index: 100;
+            max-width: 300px;
+        }
+        .controls h3 {
+            margin: 0 0 10px 0;
+            font-size: 16px;
+        }
+        .controls label {
+            display: block;
+            margin: 8px 0;
+            font-size: 12px;
+        }
+        .controls input[type="range"] {
+            width: 100%;
+        }
+        .controls select {
+            width: 100%;
+            padding: 4px;
+        }
+        .controls button {
+            width: 100%;
+            margin-top: 10px;
+            padding: 8px 12px;
+            cursor: pointer;
+            background: #4CAF50;
+            border: none;
+            color: white;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .controls button:hover {
+            background: #45a049;
+        }
+        .controls button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+        .info {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 12px;
+            z-index: 100;
+        }
+        .hover-tooltip {
+            position: absolute;
+            background: linear-gradient(135deg, rgba(0, 0, 0, 0.95), rgba(20, 20, 40, 0.95));
+            color: white;
+            padding: 10px 14px;
+            border-radius: 8px;
+            pointer-events: none;
+            font-size: 12px;
+            z-index: 1000;
+            display: none;
+            border: 1px solid rgba(100, 150, 255, 0.5);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            min-width: 180px;
+            backdrop-filter: blur(10px);
+        }
+        .hover-tooltip.visible {
+            display: block;
+        }
+        .hover-tooltip .tile-name {
+            font-weight: bold;
+            font-size: 13px;
+            color: #4FC3F7;
+            margin-bottom: 6px;
+            font-family: 'Courier New', monospace;
+        }
+        .hover-tooltip .coverage-info {
+            margin: 3px 0 0 0;
+            line-height: 1.5;
+        }
+        .hover-tooltip .year-badge {
+            display: inline-block;
+            background: rgba(79, 195, 247, 0.2);
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin: 2px;
+            font-size: 11px;
+            border: 1px solid rgba(79, 195, 247, 0.4);
+        }
+        .hover-tooltip .no-data {
+            color: #FF9800;
+            font-style: italic;
+        }
+        .hover-tooltip .water {
+            color: #03A9F4;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div id="globeViz"></div>
+    <div class="hover-tooltip" id="hoverTooltip"></div>
+
+    <div class="controls">
+        <h3>GeoTessera Coverage</h3>
+        <div style="font-size: 11px; opacity: 0.8; margin-bottom: 10px;">
+            Hover over tiles to see coverage details
+        </div>
+        <label>
+            Overlay Opacity:
+            <input type="range" id="opacity" min="0" max="1" step="0.05" value="0.8">
+            <span id="opacityValue">0.8</span>
+        </label>
+        <label>
+            <input type="checkbox" id="showBorders" checked>
+            Show country borders
+        </label>
+    </div>
+
+    <div class="info">
+        <div><strong>Coverage Tiles:</strong> <span id="tileCount">0</span></div>
+        <div><span id="status">Initializing...</span></div>
+        <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.3); font-size: 11px;">
+            <strong>Legend:</strong><br/>
+            <span style="color: #00c800;">■</span> Full coverage<br/>
+            <span style="color: #00b4ff;">■</span> Multi-year<br/>
+            <span style="color: #ffc800;">■</span> Latest year only<br/>
+            <span style="color: #c86400;">■</span> Older year<br/>
+            <span style="color: #666;">■</span> No tiles yet<br/>
+            <span style="opacity: 0.5;">■</span> Ocean
+        </div>
+    </div>
+
+    <script src="//unpkg.com/three@0.159.0/build/three.min.js"></script>
+    <script src="//unpkg.com/topojson-client@3"></script>
+    <script src="//unpkg.com/globe.gl"></script>
+    <script>
+        // GeoTessera tile configuration
+        const TILE_SIZE = 0.1; // 0.1 degree tiles
+        const TILE_OFFSET = 0.05; // centered at 0.05-degree offsets
+
+        // Configuration
+        let currentOpacity = 0.8;
+        let overlayMaterial = null;
+        let overlayMesh = null;
+        let coverageData = null; // Coverage data for tooltips
+        let countriesData = null; // GeoJSON with country boundaries
+        let tileCountryCache = new Map(); // Cache tile -> country lookups
+        let mouse = { x: 0, y: 0 };
+        let raycaster = null;
+
+        // Load coverage data from JSON file (used for tooltips)
+        async function loadCoverageData(url = 'coverage.json') {
+            try {
+                const response = await fetch(url);
+                if (!response.ok) {
+                    console.warn(`Coverage data not found at ${url}`);
+                    return null;
+                }
+                const data = await response.json();
+                console.log(`Loaded coverage data: ${data.metadata.total_tiles} tiles`);
+                return data;
+            } catch (e) {
+                console.warn(`Failed to load coverage data: ${e.message}`);
+                return null;
+            }
+        }
+
+        // Load countries GeoJSON
+        async function loadCountriesData() {
+            try {
+                // Use Natural Earth data from CDN
+                const response = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json');
+                if (!response.ok) {
+                    console.warn('Could not load country boundaries');
+                    return null;
+                }
+                const data = await response.json();
+                // Convert TopoJSON to GeoJSON
+                const countries = topojson.feature(data, data.objects.countries);
+                console.log(`Loaded ${countries.features.length} countries`);
+                return countries;
+            } catch (e) {
+                console.warn(`Failed to load countries: ${e.message}`);
+                return null;
+            }
+        }
+
+        // Find which country a point (lon, lat) is in
+        function findCountry(lon, lat) {
+            if (!countriesData) return null;
+
+            const key = `${lon.toFixed(2)},${lat.toFixed(2)}`;
+
+            // Check cache first
+            if (tileCountryCache.has(key)) {
+                return tileCountryCache.get(key);
+            }
+
+            // Point-in-polygon test
+            const point = [lon, lat];
+
+            for (const feature of countriesData.features) {
+                if (feature.geometry.type === 'Polygon') {
+                    if (pointInPolygon(point, feature.geometry.coordinates[0])) {
+                        const countryName = feature.properties.name;
+                        tileCountryCache.set(key, countryName);
+                        return countryName;
+                    }
+                } else if (feature.geometry.type === 'MultiPolygon') {
+                    for (const polygon of feature.geometry.coordinates) {
+                        if (pointInPolygon(point, polygon[0])) {
+                            const countryName = feature.properties.name;
+                            tileCountryCache.set(key, countryName);
+                            return countryName;
+                        }
+                    }
+                }
+            }
+
+            // No country found (ocean or disputed territory)
+            tileCountryCache.set(key, null);
+            return null;
+        }
+
+        // Simple point-in-polygon algorithm (ray casting)
+        function pointInPolygon(point, polygon) {
+            const [x, y] = point;
+            let inside = false;
+
+            for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+                const [xi, yi] = polygon[i];
+                const [xj, yj] = polygon[j];
+
+                const intersect = ((yi > y) !== (yj > y))
+                    && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+
+                if (intersect) inside = !inside;
+            }
+
+            return inside;
+        }
+
+        // Get tile info for tooltip
+        function getTileInfo(lon, lat) {
+            const key = `${lon.toFixed(2)},${lat.toFixed(2)}`;
+            const tileName = `${lon.toFixed(2)}, ${lat.toFixed(2)}`;
+
+            if (!coverageData) {
+                return { tileName, message: 'Coverage data not loaded' };
+            }
+
+            const years = coverageData.tiles[key];
+
+            // Check if it has coverage data first
+            if (years) {
+                return {
+                    tileName,
+                    type: 'coverage',
+                    years: years.sort((a, b) => a - b),
+                    yearCount: years.length,
+                    totalYears: coverageData.years.length
+                };
+            }
+
+            // Check if it's land with no coverage
+            // Use explicit no_coverage field if available, otherwise check landmasks
+            let isLandNoCoverage = false;
+            if (coverageData.no_coverage) {
+                isLandNoCoverage = coverageData.no_coverage.includes(key);
+            } else if (coverageData.landmasks) {
+                // Fallback for old format: check if in landmask but not in tiles
+                isLandNoCoverage = coverageData.landmasks.includes(key);
+            }
+
+            if (isLandNoCoverage) {
+                return { tileName, type: 'no-coverage', message: 'No tiles generated yet' };
+            }
+
+            // Otherwise it's ocean (not in tiles, not in landmask/no_coverage)
+            return { tileName, type: 'ocean', message: 'Ocean (outside landmask)' };
+        }
+
+        // Show tooltip with tile coverage info
+        function showTooltip(lon, lat, x, y) {
+            const tooltip = document.getElementById('hoverTooltip');
+            const info = getTileInfo(lon, lat);
+            const country = findCountry(lon, lat);
+
+            let html = `<div class="tile-name">${info.tileName}</div>`;
+            html += `<div class="coverage-info">`;
+
+            if (country) {
+                html += `<strong>${country}</strong><br/>`;
+            }
+
+            if (info.type === 'ocean') {
+                html += `<span class="water">${info.message}</span>`;
+            } else if (info.type === 'no-coverage') {
+                html += `<span class="no-data">${info.message}</span>`;
+            } else if (info.type === 'coverage') {
+                html += `<strong>Coverage:</strong> ${info.yearCount} of ${info.totalYears} years<br/>`;
+                html += `<strong>Years:</strong> `;
+                info.years.forEach(year => {
+                    html += `<span class="year-badge">${year}</span>`;
+                });
+            } else {
+                html += info.message;
+            }
+
+            html += `</div>`;
+
+            tooltip.innerHTML = html;
+            tooltip.style.left = (x + 15) + 'px';
+            tooltip.style.top = (y + 15) + 'px';
+            tooltip.classList.add('visible');
+        }
+
+        function hideTooltip() {
+            const tooltip = document.getElementById('hoverTooltip');
+            tooltip.classList.remove('visible');
+        }
+
+        // Convert screen coordinates to lat/lon on sphere
+        function screenToLatLon(screenX, screenY) {
+            if (!raycaster) return null;
+
+            const THREE = window.THREE;
+            if (!THREE) return null;
+
+            // Convert screen coordinates to normalized device coordinates (-1 to +1)
+            const rect = document.getElementById('globeViz').getBoundingClientRect();
+            mouse.x = ((screenX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((screenY - rect.top) / rect.height) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, globe.camera());
+
+            // Check intersection with overlay sphere
+            if (!overlayMesh) return null;
+
+            const intersects = raycaster.intersectObject(overlayMesh);
+            if (intersects.length === 0) return null;
+
+            const point = intersects[0].point;
+
+            // Convert 3D point to lat/lon
+            const radius = Math.sqrt(point.x * point.x + point.y * point.y + point.z * point.z);
+            const lat = Math.asin(point.y / radius) * 180 / Math.PI;
+            const lon = Math.atan2(point.x, point.z) * 180 / Math.PI;
+
+            // Snap to tile center
+            const tileLon = Math.floor(lon * 10) / 10 + TILE_OFFSET;
+            const tileLat = Math.floor(lat * 10) / 10 + TILE_OFFSET;
+
+            return { lon: tileLon, lat: tileLat };
+        }
+
+        // Initialize globe
+        const globe = Globe()
+            (document.getElementById('globeViz'))
+            .globeImageUrl('//unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
+            .bumpImageUrl('//unpkg.com/three-globe/example/img/earth-topology.png')
+            .backgroundImageUrl('//unpkg.com/three-globe/example/img/night-sky.png')
+            .polygonsData([])  // Will be populated when countries load
+            .polygonCapColor(() => 'rgba(0, 0, 0, 0)')  // Transparent fill
+            .polygonSideColor(() => 'rgba(0, 0, 0, 0)')  // Transparent sides
+            .polygonStrokeColor(() => 'rgba(255, 255, 255, 0.8)')  // White borders - darker/more opaque
+            .polygonAltitude(0.01);  // Above the tile overlay for visibility
+
+        // Set initial point of view
+        globe.pointOfView({ lat: 20, lng: 0, altitude: 2.5 });
+
+        // Initialize raycaster for mouse picking
+        setTimeout(() => {
+            const THREE = window.THREE;
+            if (THREE) {
+                raycaster = new THREE.Raycaster();
+            }
+        }, 100);
+
+        // Mouse move handler for tooltip
+        let lastHoveredTile = null;
+        document.getElementById('globeViz').addEventListener('mousemove', (event) => {
+            const tile = screenToLatLon(event.clientX, event.clientY);
+
+            if (tile) {
+                const tileKey = `${tile.lon.toFixed(2)},${tile.lat.toFixed(2)}`;
+                if (lastHoveredTile !== tileKey) {
+                    lastHoveredTile = tileKey;
+                    showTooltip(tile.lon, tile.lat, event.clientX, event.clientY);
+                } else {
+                    // Update tooltip position
+                    const tooltip = document.getElementById('hoverTooltip');
+                    tooltip.style.left = (event.clientX + 15) + 'px';
+                    tooltip.style.top = (event.clientY + 15) + 'px';
+                }
+            } else {
+                lastHoveredTile = null;
+                hideTooltip();
+            }
+        });
+
+        document.getElementById('globeViz').addEventListener('mouseleave', () => {
+            lastHoveredTile = null;
+            hideTooltip();
+        });
+
+        function updateTilesLayer() {
+            document.getElementById('status').textContent = 'Loading coverage texture...';
+
+            // Wait for globe to be ready
+            setTimeout(() => {
+                // Load pre-generated texture instead of generating client-side
+                const textureUrl = 'coverage_texture.png';
+
+                // Create image element to load texture
+                const img = new Image();
+                img.onload = () => {
+                    // Access THREE from window (bundled with globe.gl)
+                    const THREE = window.THREE;
+
+                    if (!THREE) {
+                        console.error('THREE.js not available');
+                        document.getElementById('status').textContent = 'Error: THREE.js not loaded';
+                        return;
+                    }
+
+                    const texture = new THREE.Texture(img);
+                    texture.needsUpdate = true;
+
+                    // Find or create overlay mesh
+                    if (!overlayMesh) {
+                        // Create a slightly larger sphere for the overlay (close to globe surface)
+                        const geometry = new THREE.SphereGeometry(
+                            102, // Just above globe (100) to avoid z-fighting but not stick out
+                            64,
+                            64
+                        );
+
+                        overlayMaterial = new THREE.MeshBasicMaterial({
+                            map: texture,
+                            transparent: true,
+                            opacity: currentOpacity,
+                            side: THREE.FrontSide,
+                            depthTest: true,
+                            depthWrite: false
+                        });
+
+                        overlayMesh = new THREE.Mesh(geometry, overlayMaterial);
+                        overlayMesh.name = 'tilesOverlay';
+                        overlayMesh.renderOrder = 1; // Render after globe
+
+                        // Rotate to align with globe.gl coordinate system (270 degrees)
+                        overlayMesh.rotation.y = 4.71; // 3π/2
+
+                        // Add to globe scene
+                        globe.scene().add(overlayMesh);
+                        console.log('Overlay mesh added to scene');
+                    } else {
+                        // Update existing material
+                        overlayMaterial.map = texture;
+                        overlayMaterial.opacity = currentOpacity;
+                        overlayMaterial.needsUpdate = true;
+                        console.log('Overlay texture updated');
+                    }
+
+                    document.getElementById('status').textContent = 'Ready';
+                };
+                img.src = textureUrl;
+            }, 50);
+        }
+
+        // Initialize and load coverage data
+        async function initialize() {
+            // First, load and show country boundaries (fast)
+            document.getElementById('status').textContent = 'Loading country boundaries...';
+            countriesData = await loadCountriesData();
+
+            if (countriesData) {
+                // Add country polygons to globe immediately
+                globe.polygonsData(countriesData.features);
+                console.log('Country boundaries added to globe');
+                document.getElementById('status').textContent = 'Globe ready - Loading coverage data...';
+            }
+
+            // Then load coverage data (faster now - just for tooltips)
+            coverageData = await loadCoverageData('coverage.json');
+
+            if (coverageData) {
+                document.getElementById('status').textContent = 'Loading coverage texture...';
+                // Update tile count from metadata
+                document.getElementById('tileCount').textContent = coverageData.metadata.total_tiles.toLocaleString();
+            } else {
+                document.getElementById('status').textContent = 'Coverage data not available';
+            }
+
+            // Check THREE availability
+            console.log('Checking THREE.js availability...');
+            console.log('window.THREE:', window.THREE);
+            console.log('Globe scene:', globe.scene());
+            console.log('Scene children:', globe.scene().children);
+
+            // Finally, load and render pre-generated texture (fast!)
+            updateTilesLayer();
+        }
+
+        // Start initialization
+        setTimeout(() => {
+            initialize();
+        }, 500);
+
+        // Control handlers
+        document.getElementById('opacity').addEventListener('input', (e) => {
+            currentOpacity = parseFloat(e.target.value);
+            document.getElementById('opacityValue').textContent = currentOpacity.toFixed(2);
+
+            if (overlayMaterial) {
+                overlayMaterial.opacity = currentOpacity;
+                overlayMaterial.needsUpdate = true;
+            }
+        });
+
+        document.getElementById('showBorders').addEventListener('change', (e) => {
+            if (e.target.checked && countriesData) {
+                globe.polygonsData(countriesData.features);
+            } else {
+                globe.polygonsData([]);
+            }
+        });
+
+        // Disable auto-rotate, let user control the view
+        globe.controls().autoRotate = false;
+        globe.controls().enableZoom = true;
+    </script>
+</body>
+</html>
