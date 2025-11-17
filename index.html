@@ -245,22 +245,61 @@
             return null;
         }
 
-        // Simple point-in-polygon algorithm (ray casting)
-        function pointInPolygon(point, polygon) {
-            const [x, y] = point;
-            let inside = false;
+        // Check if polygon crosses the antimeridian
+        function crossesAntimeridian(polygon) {
+            let minLon = Infinity;
+            let maxLon = -Infinity;
 
-            for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-                const [xi, yi] = polygon[i];
-                const [xj, yj] = polygon[j];
-
-                const intersect = ((yi > y) !== (yj > y))
-                    && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
-
-                if (intersect) inside = !inside;
+            for (const coord of polygon) {
+                const lon = coord[0];
+                if (lon < minLon) minLon = lon;
+                if (lon > maxLon) maxLon = lon;
             }
 
-            return inside;
+            return (maxLon - minLon) > 180;
+        }
+
+        // Point-in-polygon algorithm with antimeridian handling
+        function pointInPolygon(point, polygon) {
+            const [testLon, testLat] = point;
+
+            // Check if polygon crosses antimeridian
+            if (crossesAntimeridian(polygon)) {
+                // For antimeridian-crossing polygons, normalize to [0, 360) range
+                const normalizedTestLon = testLon < 0 ? testLon + 360 : testLon;
+
+                let inside = false;
+                for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+                    const [lonI, latI] = polygon[i];
+                    const [lonJ, latJ] = polygon[j];
+
+                    // Normalize polygon coordinates to [0, 360)
+                    const normLonI = lonI < 0 ? lonI + 360 : lonI;
+                    const normLonJ = lonJ < 0 ? lonJ + 360 : lonJ;
+
+                    const intersect = ((latI > testLat) !== (latJ > testLat))
+                        && (normalizedTestLon < (normLonJ - normLonI) * (testLat - latI) / (latJ - latI) + normLonI);
+
+                    if (intersect) inside = !inside;
+                }
+
+                return inside;
+            } else {
+                // Standard ray casting for normal polygons
+                let inside = false;
+
+                for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+                    const [lonI, latI] = polygon[i];
+                    const [lonJ, latJ] = polygon[j];
+
+                    const intersect = ((latI > testLat) !== (latJ > testLat))
+                        && (testLon < (lonJ - lonI) * (testLat - latI) / (latJ - latI) + lonI);
+
+                    if (intersect) inside = !inside;
+                }
+
+                return inside;
+            }
         }
 
         // Get tile info for tooltip
@@ -366,8 +405,11 @@
             const point = intersects[0].point;
 
             // Convert 3D point to lat/lon
+            // The overlay mesh is rotated 270° around Y axis
             const radius = Math.sqrt(point.x * point.x + point.y * point.y + point.z * point.z);
             const lat = Math.asin(point.y / radius) * 180 / Math.PI;
+
+            // Calculate longitude from 3D coordinates
             const lon = Math.atan2(point.x, point.z) * 180 / Math.PI;
 
             // Snap to tile center
