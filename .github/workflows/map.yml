@@ -26,7 +26,7 @@ jobs:
 
       # Step 3: Run your Python script to generate the map
       - name: Generate map
-        run: uvx geotessera coverage
+        run: uvx --refresh --from git+https://github.com/ucam-eo/geotessera@main geotessera coverage
 
       - name: Make HTML
         run: mv globe.html index.html
