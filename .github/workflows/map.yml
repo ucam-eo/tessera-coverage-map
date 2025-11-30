@@ -29,7 +29,7 @@ jobs:
         run: uvx --refresh --from git+https://github.com/ucam-eo/geotessera@main geotessera coverage
 
       - name: Make HTML
-        run: mv globe.html index.html
+        run: mv globe.html index.html && mv tessera_coverage.png map.png
 
       # Step 5: Commit the updated map file
       # We use an existing action to simplify the commit operation
