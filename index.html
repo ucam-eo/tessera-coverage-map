@@ -142,77 +142,159 @@
     <div class="info">
         <div><strong>Coverage Tiles:</strong> <span id="tileCount">0</span></div>
         <div><span id="status">Initializing...</span></div>
-        <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.3); font-size: 11px;">
-            <strong>Legend:</strong><br/>
-            <span style="color: #00c800;">■</span> Full coverage<br/>
-            <span style="color: #00b4ff;">■</span> Multi-year<br/>
-            <span style="color: #ffc800;">■</span> Latest year only<br/>
-            <span style="color: #c86400;">■</span> Older year<br/>
-            <span style="color: #666;">■</span> No tiles yet<br/>
-            <span style="opacity: 0.5;">■</span> Ocean
+        <div id="layerToggle" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.3); font-size: 12px;">
+            <strong>Layers</strong>
+            <div id="layerList" style="margin-top: 6px;">Loading…</div>
+        </div>
+        <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.3); font-size: 11px; opacity: 0.7;">
+            Tiles shown where datasets have land coverage; toggle layers above to compare.
         </div>
     </div>
 
-    <script src="//unpkg.com/three@0.159.0/build/three.min.js"></script>
-    <script src="//unpkg.com/topojson-client@3"></script>
-    <script src="//unpkg.com/globe.gl"></script>
-    <script>
+    <!--
+      Modern ES-module loading via an import map. esm.sh's ?deps= pins the
+      peer-dependency Three version so globe.gl and our code share the same
+      THREE instance (no "Multiple instances of Three.js" warning) and no
+      UMD/Timer breakage. Pinned versions for reproducibility.
+    -->
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://esm.sh/three@0.179.0",
+        "globe.gl": "https://esm.sh/globe.gl@2.46.1?deps=three@0.179.0",
+        "topojson-client": "https://esm.sh/topojson-client@3.1.0"
+      }
+    }
+    </script>
+    <script type="module">
+        import Globe from 'globe.gl';
+        import * as THREE from 'three';
+        import * as topojson from 'topojson-client';
+
         // GeoTessera tile configuration
         const TILE_SIZE = 0.1; // 0.1 degree tiles
         const TILE_OFFSET = 0.05; // centered at 0.05-degree offsets
 
         // Configuration
         let currentOpacity = 0.8;
-        let overlayMaterial = null;
-        let overlayMesh = null;
-        let coverageData = null; // Coverage data for tooltips
-        let textureImageData = null; // Pixel data from coverage texture for land/ocean detection
+        // One entry per (version, variant) layer. Populated by initLayers().
+        // Each entry: {id, version, variant, color, years, tilesByYear, mesh, material, visible}
+        let datasets = [];
+        let textureImageData = null; // Pixel data from FIRST loaded texture for ocean detection
         let countriesData = null; // GeoJSON with country boundaries
         let tileCountryCache = new Map(); // Cache tile -> country lookups
         let mouse = { x: 0, y: 0 };
         let raycaster = null;
 
-        // Load coverage data from split JSON files (metadata + per-year tile lists)
-        async function loadCoverageData(url = 'coverage.json') {
+        // Load the coverage index (coverage.json) — schema v2 lists multiple
+        // datasets; older single-dataset format is auto-promoted into a single
+        // entry so this viewer works against both shapes.
+        async function loadCoverageIndex(url = 'coverage.json') {
             try {
                 const response = await fetch(url);
                 if (!response.ok) {
-                    console.warn(`Coverage data not found at ${url}`);
-                    return null;
+                    console.warn(`Coverage index not found at ${url}`);
+                    return [];
                 }
                 const main = await response.json();
-                console.log(`Loaded coverage metadata: ${main.metadata.total_tiles} tiles, ${main.years.length} years`);
-
-                // Load per-year tile files in parallel
-                const tiles = {};
-                const yearResults = await Promise.allSettled(
-                    main.years.map(async (year) => {
-                        const yearUrl = url.replace('coverage.json', `coverage_${year}.json`);
-                        const resp = await fetch(yearUrl);
-                        if (!resp.ok) return { year, coords: [] };
-                        const coords = await resp.json();
-                        return { year, coords };
-                    })
-                );
-
-                for (const result of yearResults) {
-                    if (result.status === 'fulfilled') {
-                        const { year, coords } = result.value;
-                        for (const key of coords) {
-                            if (!tiles[key]) tiles[key] = [];
-                            tiles[key].push(year);
-                        }
-                    }
+                if (main.schema_version === 2 && Array.isArray(main.datasets)) {
+                    return main.datasets;
                 }
-
-                return {
-                    tiles,
-                    years: main.years,
-                    metadata: main.metadata,
-                };
+                // Legacy single-dataset shape: { years, metadata, year_file_prefix?, dataset_id? }
+                return [{
+                    id: main.dataset_id || 'default',
+                    version: main.metadata?.version || '',
+                    version_path: '',
+                    variant: '',
+                    color: [200, 60, 60],
+                    years: main.years || [],
+                    coverage_json: url.split('/').pop(),
+                    texture_png: 'coverage_texture.png',
+                    year_file_prefix: main.year_file_prefix || 'coverage_',
+                }];
             } catch (e) {
-                console.warn(`Failed to load coverage data: ${e.message}`);
-                return null;
+                console.warn(`Failed to load coverage index: ${e.message}`);
+                return [];
+            }
+        }
+
+        // Fetch per-year tile lists for a single dataset and pivot into a
+        // { "lon,lat": [year, year, …] } map for tooltip lookups.
+        async function loadDatasetTiles(ds) {
+            const tiles = {};
+            const prefix = ds.year_file_prefix || `coverage_${ds.id}_`;
+            const fetches = ds.years.map(async (year) => {
+                const resp = await fetch(`${prefix}${year}.json`);
+                if (!resp.ok) return [];
+                return resp.json();
+            });
+            const results = await Promise.allSettled(fetches);
+            for (let i = 0; i < ds.years.length; i++) {
+                if (results[i].status !== 'fulfilled') continue;
+                const year = ds.years[i];
+                for (const key of results[i].value) {
+                    if (!tiles[key]) tiles[key] = [];
+                    tiles[key].push(year);
+                }
+            }
+            return tiles;
+        }
+
+        // Create one overlay sphere per dataset; renderOrder is staggered so
+        // layers composite predictably when multiple are visible.
+        function createDatasetMesh(ds, img, renderOrder) {
+            const texture = new THREE.Texture(img);
+            texture.needsUpdate = true;
+            const geometry = new THREE.SphereGeometry(102, 64, 64);
+            const material = new THREE.MeshBasicMaterial({
+                map: texture,
+                transparent: true,
+                opacity: currentOpacity,
+                side: THREE.FrontSide,
+                depthTest: true,
+                depthWrite: false,
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.name = `tilesOverlay_${ds.id}`;
+            mesh.renderOrder = renderOrder;
+            mesh.rotation.y = 4.71; // 3π/2 to match globe.gl coords
+            globe.scene().add(mesh);
+            ds.material = material;
+            return mesh;
+        }
+
+        function renderLayerToggles() {
+            const root = document.getElementById('layerList');
+            root.innerHTML = '';
+            for (const ds of datasets) {
+                const id = `ds_${ds.id}`;
+                const [r, g, b] = ds.color;
+                const colorRgb = `rgb(${r},${g},${b})`;
+                // Shade scale mirrors the server-side rendering: tiles with
+                // 1/N years are blended 50% toward white; tiles with N/N
+                // years stay at full tint. Show the gradient inline so the
+                // legend self-documents what the on-globe shades mean.
+                const palest = `rgb(${Math.round(r*0.5+255*0.5)},${Math.round(g*0.5+255*0.5)},${Math.round(b*0.5+255*0.5)})`;
+                const gradient = `linear-gradient(90deg, ${palest}, ${colorRgb})`;
+                const totalYears = ds.years.length;
+                const wrap = document.createElement('div');
+                wrap.style.cssText = 'margin:8px 0;';
+                wrap.innerHTML = `
+                    <label style="display:flex;align-items:center;gap:6px;">
+                        <input type="checkbox" id="${id}" checked>
+                        <span style="color:${colorRgb};font-size:14px;">■</span>
+                        <span>v${ds.version}${ds.variant ? ' / ' + ds.variant : ''}</span>
+                    </label>
+                    <div style="display:flex;align-items:center;gap:6px;margin:3px 0 0 24px;font-size:10px;opacity:0.85;">
+                        <span>1 yr</span>
+                        <span style="flex:1;height:8px;background:${gradient};border:1px solid rgba(255,255,255,0.3);border-radius:2px;"></span>
+                        <span>${totalYears} yr</span>
+                    </div>`;
+                root.appendChild(wrap);
+                wrap.querySelector('input').addEventListener('change', (e) => {
+                    ds.visible = e.target.checked;
+                    if (ds.mesh) ds.mesh.visible = ds.visible;
+                });
             }
         }
 
@@ -341,26 +423,34 @@
             }
         }
 
-        // Get tile info for tooltip
+        // Get tile info for tooltip — aggregates across every visible dataset
+        // so hovering shows v1.0/vultr AND v1.1/cambridge years for the same tile.
         function getTileInfo(lon, lat) {
             const key = `${lon.toFixed(2)},${lat.toFixed(2)}`;
             const tileName = `${lon.toFixed(2)}, ${lat.toFixed(2)}`;
 
-            if (!coverageData) {
+            if (!datasets.length) {
                 return { tileName, message: 'Coverage data not loaded' };
             }
 
-            const years = coverageData.tiles[key];
+            const perDataset = [];
+            for (const ds of datasets) {
+                if (!ds.visible) continue;
+                const years = ds.tilesByYear ? ds.tilesByYear[key] : null;
+                if (years && years.length) {
+                    perDataset.push({
+                        id: ds.id,
+                        version: ds.version,
+                        variant: ds.variant,
+                        color: ds.color,
+                        years: years.slice().sort((a, b) => a - b),
+                        totalYears: ds.years.length,
+                    });
+                }
+            }
 
-            // Check if it has coverage data first
-            if (years) {
-                return {
-                    tileName,
-                    type: 'coverage',
-                    years: years.sort((a, b) => a - b),
-                    yearCount: years.length,
-                    totalYears: coverageData.years.length
-                };
+            if (perDataset.length) {
+                return { tileName, type: 'coverage', datasets: perDataset };
             }
 
             // Use coverage texture to detect land vs ocean (O(1) pixel lookup)
@@ -390,10 +480,18 @@
             } else if (info.type === 'no-coverage') {
                 html += `<span class="no-data">${info.message}</span>`;
             } else if (info.type === 'coverage') {
-                html += `<strong>Coverage:</strong> ${info.yearCount} of ${info.totalYears} years<br/>`;
-                html += `<strong>Years:</strong> `;
-                info.years.forEach(year => {
-                    html += `<span class="year-badge">${year}</span>`;
+                // One block per dataset that has data at this tile.
+                info.datasets.forEach((ds, idx) => {
+                    const colorRgb = `rgb(${ds.color.join(',')})`;
+                    if (idx > 0) html += `<div style="margin-top:6px;"></div>`;
+                    html += `<div><span style="color:${colorRgb};">■</span> `
+                          + `<strong>v${ds.version}${ds.variant ? '/' + ds.variant : ''}</strong> `
+                          + `&middot; ${ds.years.length}/${ds.totalYears} yrs</div>`;
+                    html += `<div>`;
+                    ds.years.forEach(year => {
+                        html += `<span class="year-badge">${year}</span>`;
+                    });
+                    html += `</div>`;
                 });
             } else {
                 html += info.message;
@@ -416,9 +514,6 @@
         function screenToLatLon(screenX, screenY) {
             if (!raycaster) return null;
 
-            const THREE = window.THREE;
-            if (!THREE) return null;
-
             // Convert screen coordinates to normalized device coordinates (-1 to +1)
             const rect = document.getElementById('globeViz').getBoundingClientRect();
             mouse.x = ((screenX - rect.left) / rect.width) * 2 - 1;
@@ -426,10 +521,14 @@
 
             raycaster.setFromCamera(mouse, globe.camera());
 
-            // Check intersection with overlay sphere
-            if (!overlayMesh) return null;
+            // Ray-cast against any dataset overlay sphere — they're all the
+            // same radius, so it doesn't matter which one we hit.
+            const targets = datasets
+                .map(d => d.mesh)
+                .filter(m => m);
+            if (!targets.length) return null;
 
-            const intersects = raycaster.intersectObject(overlayMesh);
+            const intersects = raycaster.intersectObjects(targets);
             if (intersects.length === 0) return null;
 
             const point = intersects[0].point;
@@ -466,10 +565,7 @@
 
         // Initialize raycaster for mouse picking
         setTimeout(() => {
-            const THREE = window.THREE;
-            if (THREE) {
-                raycaster = new THREE.Raycaster();
-            }
+            raycaster = new THREE.Raycaster();
         }, 100);
 
         // Mouse move handler for tooltip
@@ -499,112 +595,67 @@
             hideTooltip();
         });
 
-        function updateTilesLayer() {
-            document.getElementById('status').textContent = 'Loading coverage texture...';
+        // Load every dataset's texture + per-year tile data and add one
+        // overlay mesh per dataset.
+        async function initLayers() {
+            document.getElementById('status').textContent = 'Loading dataset textures...';
+            let totalTiles = 0;
+            let order = 1;
+            for (const ds of datasets) {
+                // Per-year tile-coverage map (used for hover tooltips).
+                ds.tilesByYear = await loadDatasetTiles(ds);
+                totalTiles += Object.keys(ds.tilesByYear).length;
 
-            // Wait for globe to be ready
-            setTimeout(() => {
-                // Load pre-generated texture instead of generating client-side
-                const textureUrl = 'coverage_texture.png';
+                // Texture image -> overlay sphere.
+                await new Promise((resolve) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        // First loaded texture seeds the ocean-detection pixel
+                        // buffer used by the hover tooltip.
+                        if (!textureImageData) {
+                            const offscreen = document.createElement('canvas');
+                            offscreen.width = img.width;
+                            offscreen.height = img.height;
+                            const ctx2d = offscreen.getContext('2d');
+                            ctx2d.drawImage(img, 0, 0);
+                            textureImageData = ctx2d.getImageData(0, 0, img.width, img.height);
+                        }
+                        ds.mesh = createDatasetMesh(ds, img, order++);
+                        ds.visible = true;
+                        resolve();
+                    };
+                    img.onerror = () => {
+                        console.warn(`Could not load texture for ${ds.id}: ${ds.texture_png}`);
+                        resolve();
+                    };
+                    img.src = ds.texture_png;
+                });
+            }
 
-                // Create image element to load texture
-                const img = new Image();
-                img.onload = () => {
-                    // Extract pixel data for land/ocean detection in tooltips
-                    const offscreen = document.createElement('canvas');
-                    offscreen.width = img.width;
-                    offscreen.height = img.height;
-                    const ctx2d = offscreen.getContext('2d');
-                    ctx2d.drawImage(img, 0, 0);
-                    textureImageData = ctx2d.getImageData(0, 0, img.width, img.height);
-                    console.log(`Texture pixel data loaded: ${img.width}x${img.height}`);
-
-                    // Access THREE from window (bundled with globe.gl)
-                    const THREE = window.THREE;
-
-                    if (!THREE) {
-                        console.error('THREE.js not available');
-                        document.getElementById('status').textContent = 'Error: THREE.js not loaded';
-                        return;
-                    }
-
-                    const texture = new THREE.Texture(img);
-                    texture.needsUpdate = true;
-
-                    // Find or create overlay mesh
-                    if (!overlayMesh) {
-                        // Create a slightly larger sphere for the overlay (close to globe surface)
-                        const geometry = new THREE.SphereGeometry(
-                            102, // Just above globe (100) to avoid z-fighting but not stick out
-                            64,
-                            64
-                        );
-
-                        overlayMaterial = new THREE.MeshBasicMaterial({
-                            map: texture,
-                            transparent: true,
-                            opacity: currentOpacity,
-                            side: THREE.FrontSide,
-                            depthTest: true,
-                            depthWrite: false
-                        });
-
-                        overlayMesh = new THREE.Mesh(geometry, overlayMaterial);
-                        overlayMesh.name = 'tilesOverlay';
-                        overlayMesh.renderOrder = 1; // Render after globe
-
-                        // Rotate to align with globe.gl coordinate system (270 degrees)
-                        overlayMesh.rotation.y = 4.71; // 3π/2
-
-                        // Add to globe scene
-                        globe.scene().add(overlayMesh);
-                        console.log('Overlay mesh added to scene');
-                    } else {
-                        // Update existing material
-                        overlayMaterial.map = texture;
-                        overlayMaterial.opacity = currentOpacity;
-                        overlayMaterial.needsUpdate = true;
-                        console.log('Overlay texture updated');
-                    }
-
-                    document.getElementById('status').textContent = 'Ready';
-                };
-                img.src = textureUrl;
-            }, 50);
+            document.getElementById('tileCount').textContent = totalTiles.toLocaleString();
+            renderLayerToggles();
+            document.getElementById('status').textContent = 'Ready';
         }
 
-        // Initialize and load coverage data
+        // Initialize: country borders first, then the coverage index + layers.
         async function initialize() {
-            // First, load and show country boundaries (fast)
             document.getElementById('status').textContent = 'Loading country boundaries...';
             countriesData = await loadCountriesData();
-
             if (countriesData) {
-                // Add country polygons to globe immediately
                 globe.polygonsData(countriesData.features);
-                console.log('Country boundaries added to globe');
-                document.getElementById('status').textContent = 'Globe ready - Loading coverage data...';
+                document.getElementById('status').textContent = 'Globe ready - Loading coverage index...';
             }
 
-            // Then load coverage data (faster now - just for tooltips)
-            coverageData = await loadCoverageData('coverage.json');
-
-            if (coverageData) {
-                document.getElementById('status').textContent = 'Loading coverage texture...';
-                // Update tile count from metadata
-                document.getElementById('tileCount').textContent = coverageData.metadata.total_tiles.toLocaleString();
-            } else {
+            datasets = await loadCoverageIndex('coverage.json');
+            if (!datasets.length) {
                 document.getElementById('status').textContent = 'Coverage data not available';
+                return;
             }
 
-            // Check THREE availability
-            console.log('Checking THREE.js availability...');
-            console.log('window.THREE:', window.THREE);
-            console.log('Globe scene:', globe.scene());
-            console.log('Scene children:', globe.scene().children);
+            console.log('THREE:', THREE.REVISION);
+            console.log(`Datasets: ${datasets.map(d => d.id).join(', ')}`);
 
-            // Finally, load and render pre-generated texture (fast!)
-            updateTilesLayer();
+            await initLayers();
         }
 
         // Start initialization
@@ -616,10 +667,11 @@
         document.getElementById('opacity').addEventListener('input', (e) => {
             currentOpacity = parseFloat(e.target.value);
             document.getElementById('opacityValue').textContent = currentOpacity.toFixed(2);
-
-            if (overlayMaterial) {
-                overlayMaterial.opacity = currentOpacity;
-                overlayMaterial.needsUpdate = true;
+            for (const ds of datasets) {
+                if (ds.material) {
+                    ds.material.opacity = currentOpacity;
+                    ds.material.needsUpdate = true;
+                }
             }
         });
 
