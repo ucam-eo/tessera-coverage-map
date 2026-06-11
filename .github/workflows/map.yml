@@ -22,6 +22,28 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
 
+      # Rescan the public Tessera bucket and write fresh per-version
+      # manifest.parquet / landmasks.parquet files, so the coverage map
+      # below renders from up-to-date manifests (CI version of geotessera's
+      # update-manifests.sh). The scan reads the bucket anonymously — no
+      # credentials until the upload below.
+      - name: Scan bucket for manifests
+        run: uvx --refresh --from git+https://github.com/avsm/geotessera@main geotessera-registry s3scan s3://tessera-embeddings/ --output "$RUNNER_TEMP/manifests"
+
+      # Bucket writes go through TesseraEmbeddingsS3Role; the secrets hold
+      # the IAM user keys that are allowed to assume it (mirrors the local
+      # 'tessera' profile: user credentials + role_arn).
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ secrets.AWS_ROLE_URN }}
+          aws-region: us-west-2
+
+      - name: Upload manifests to S3
+        run: aws s3 cp --recursive "$RUNNER_TEMP/manifests/" s3://tessera-embeddings/
+
       # The generate step rewrites the full output set, so clear out the
       # previous run's files first: datasets or years that disappear
       # upstream would otherwise linger as stale JSON/PNG on the site.
