@@ -39,6 +39,10 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           role-to-assume: ${{ secrets.AWS_ROLE_URN }}
+          # The role's trust policy allows sts:AssumeRole but not
+          # sts:TagSession, which the action otherwise also requests when
+          # assuming a role from user credentials.
+          role-skip-session-tagging: true
           aws-region: us-west-2
 
       - name: Upload manifests to S3
