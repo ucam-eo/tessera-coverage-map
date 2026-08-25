@@ -78,7 +78,7 @@ Enter
 Sleep 20s
 
 Set TypingSpeed 1s
-Type "uvx geotessera --help"
+Type@0.3s "uvx --from git+https://github.com/ucam-eo/geotessera@main geotessera --help"
 Sleep 10s
 Enter
 
@@ -91,7 +91,7 @@ Type "cat demo/02"
 Set TypingSpeed 1s
 Enter
 
-Type "uvx geotessera coverage"
+Type@0.3s "uvx --from git+https://github.com/ucam-eo/geotessera@main geotessera coverage"
 Enter
 
 Wait@1000s
@@ -114,7 +114,7 @@ Type "cat demo/03"
 Set TypingSpeed 1s
 Enter
 
-Type "echo uvx geotessera coverage --country=uk
+Type@0.3s "echo uvx --from git+https://github.com/ucam-eo/geotessera@main geotessera coverage --country=uk"
 Enter
 
 Sleep 20s
@@ -127,7 +127,7 @@ Set TypingSpeed 1s
 Enter
 
 Sleep 20s
-Type "uvx geotessera download --bbox '-0.809469,51.635413,-0.747113,51.658581' --output cb"
+Type@0.3s "uvx --from git+https://github.com/ucam-eo/geotessera@main geotessera download --bbox '-0.809469,51.635413,-0.747113,51.658581' --output cb"
 Enter
 
 Wait@300s
@@ -145,7 +145,7 @@ Type "cat demo/05"
 Set TypingSpeed 1s
 Enter
 
-Type "uvx geotessera visualize cb cb.tiff"
+Type@0.3s "uvx --from git+https://github.com/ucam-eo/geotessera@main geotessera visualize cb cb.tiff"
 Enter
 
 Wait @300s
